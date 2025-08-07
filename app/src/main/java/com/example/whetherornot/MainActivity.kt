@@ -57,7 +57,7 @@ fun WeatherApp() {
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = "WhetherOrNot Weather",
+                        text = "Whether Or Not",
                         fontWeight = FontWeight.Bold
                     )
                 },
