@@ -74,6 +74,15 @@ public class JavaWeatherRepository {
     }
 
     /**
+     * Interface for location and weather callbacks
+     */
+    public interface LocationWeatherCallback {
+        void onLocationReceived(double latitude, double longitude, String locationName);
+        void onWeatherSuccess(String jsonData);
+        void onError(String errorMessage);
+    }
+
+    /**
      * Fetch weather data from API
      * @param latitude Latitude coordinate
      * @param longitude Longitude coordinate
@@ -198,5 +207,72 @@ public class JavaWeatherRepository {
      */
     public void getWeatherDataByZip(String zipCode, JsonDataCallback callback) {
         getWeatherDataByZip(zipCode, "US", callback);
+    }
+
+    /**
+     * Get current location and fetch weather data
+     * @param callback Callback to handle location and weather responses
+     * @param context Android context for location services
+     */
+    public void getCurrentLocationAndWeather(LocationWeatherCallback callback, android.content.Context context) {
+        // Use the LocationManager to get current location
+        com.example.whetherornot.utils.LocationManager locationManager =
+            new com.example.whetherornot.utils.LocationManager(context);
+
+        // Check if location permission is granted
+        if (!locationManager.hasLocationPermission()) {
+            callback.onError("Location permission not granted");
+            return;
+        }
+
+        // Get current location in a background thread
+        new Thread(() -> {
+            try {
+                // This is a simplified approach - in a real app you'd want to handle this more elegantly
+                // For now, we'll use a blocking approach with timeout
+                com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient =
+                    com.google.android.gms.location.LocationServices.getFusedLocationProviderClient(context);
+
+                com.google.android.gms.tasks.CancellationTokenSource cancellationTokenSource =
+                    new com.google.android.gms.tasks.CancellationTokenSource();
+
+                fusedLocationClient.getCurrentLocation(
+                    com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY,
+                    cancellationTokenSource.getToken()
+                ).addOnSuccessListener(location -> {
+                    if (location != null) {
+                        double latitude = location.getLatitude();
+                        double longitude = location.getLongitude();
+                        String locationName = String.format("Current Location (%.4f°N, %.4f°W)",
+                            latitude, Math.abs(longitude));
+
+                        // Notify about location
+                        callback.onLocationReceived(latitude, longitude, locationName);
+
+                        // Now fetch weather data
+                        getWeatherDataAsJson(latitude, longitude, new JsonDataCallback() {
+                            @Override
+                            public void onSuccess(String jsonData) {
+                                callback.onWeatherSuccess(jsonData);
+                            }
+
+                            @Override
+                            public void onError(String errorMessage) {
+                                callback.onError(errorMessage);
+                            }
+                        });
+                    } else {
+                        callback.onError("Unable to get current location");
+                    }
+                }).addOnFailureListener(e -> {
+                    callback.onError("Location error: " + e.getMessage());
+                });
+
+            } catch (SecurityException e) {
+                callback.onError("Location permission denied: " + e.getMessage());
+            } catch (Exception e) {
+                callback.onError("Error getting location: " + e.getMessage());
+            }
+        }).start();
     }
 }
