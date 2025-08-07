@@ -1,10 +1,13 @@
 package com.example.whetherornot
 
+import android.Manifest
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -16,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -27,6 +31,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.example.whetherornot.data.repository.KotlinWeatherRepository
 import com.example.whetherornot.data.repository.JavaWeatherRepository
 import com.example.whetherornot.data.model.WeatherResponse
+import com.example.whetherornot.utils.LocationManager
 import com.google.gson.Gson
 
 class MainActivity : ComponentActivity() {
@@ -102,13 +107,125 @@ fun KotlinWeatherContent() {
     var currentWeatherIcon by remember { mutableStateOf<String?>(null) }
     var currentWeatherDescription by remember { mutableStateOf<String?>(null) }
     var zipCodeInput by remember { mutableStateOf("") }
-    var currentLocation by remember { mutableStateOf("Duluth, MN (46.8384°N, 92.1800°W)") }
+    var currentLocation by remember { mutableStateOf("Loading location...") }
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { KotlinWeatherRepository() }
+    val context = LocalContext.current
+    val locationManager = remember { LocationManager(context) }
 
     // Default coordinates: Duluth, MN
     var currentLatitude by remember { mutableStateOf(46.8384) }
     var currentLongitude by remember { mutableStateOf(-92.1800) }
+    var hasTriedLocation by remember { mutableStateOf(false) }
+
+    // Function to fetch weather data
+    suspend fun fetchWeatherData(lat: Double, lon: Double, locationName: String) {
+        isLoading = true
+        errorMessage = null
+        weatherJson = null
+        currentWeatherIcon = null
+        currentWeatherDescription = null
+        currentLocation = locationName
+
+        try {
+            val result = repository.getWeatherDataAsJson(lat, lon)
+            result.fold(
+                onSuccess = { json ->
+                    weatherJson = json
+                    isLoading = false
+                    Log.d("KotlinWeather", "Weather JSON: $json")
+
+                    // Parse JSON to extract icon information
+                    try {
+                        val gson = Gson()
+                        val weatherResponse = gson.fromJson(json, WeatherResponse::class.java)
+                        weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                            currentWeatherIcon = weather.icon
+                            currentWeatherDescription = weather.description
+                        }
+                    } catch (e: Exception) {
+                        Log.e("KotlinWeather", "Error parsing weather data: ${e.message}")
+                    }
+                },
+                onFailure = { exception ->
+                    errorMessage = "Error: ${exception.message}"
+                    isLoading = false
+                }
+            )
+        } catch (e: Exception) {
+            errorMessage = "Unexpected error: ${e.message}"
+            isLoading = false
+        }
+    }
+
+    // Permission launcher for location
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        coroutineScope.launch {
+            if (fineLocationGranted || coarseLocationGranted) {
+                // Permission granted, get location and fetch weather
+                try {
+                    locationManager.getCurrentLocation()?.let { locationData ->
+                        currentLatitude = locationData.latitude
+                        currentLongitude = locationData.longitude
+                        fetchWeatherData(locationData.latitude, locationData.longitude, locationData.locationName)
+                    } ?: run {
+                        // Location unavailable, use default coordinates
+                        currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
+                    }
+                } catch (e: Exception) {
+                    Log.e("KotlinWeather", "Error getting location: ${e.message}")
+                    // Fallback to default coordinates
+                    currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
+                }
+            } else {
+                // Permission denied, use default coordinates
+                currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
+            }
+            hasTriedLocation = true
+        }
+    }
+
+    // Auto-fetch location and weather data on first load
+    LaunchedEffect(Unit) {
+        if (!hasTriedLocation) {
+            if (locationManager.hasLocationPermission()) {
+                // Permission already granted, get location
+                try {
+                    locationManager.getCurrentLocation()?.let { locationData ->
+                        currentLatitude = locationData.latitude
+                        currentLongitude = locationData.longitude
+                        fetchWeatherData(locationData.latitude, locationData.longitude, locationData.locationName)
+                    } ?: run {
+                        // Location unavailable, use default coordinates
+                        currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
+                    }
+                } catch (e: Exception) {
+                    Log.e("KotlinWeather", "Error getting location: ${e.message}")
+                    // Fallback to default coordinates
+                    currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
+                }
+            } else {
+                // Request location permission
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+            hasTriedLocation = true
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -494,12 +611,195 @@ fun JavaWeatherContent() {
     var currentWeatherIcon by remember { mutableStateOf<String?>(null) }
     var currentWeatherDescription by remember { mutableStateOf<String?>(null) }
     var zipCodeInput by remember { mutableStateOf("") }
-    var currentLocation by remember { mutableStateOf("Duluth, MN (46.8384°N, 92.1800°W)") }
+    var currentLocation by remember { mutableStateOf("Loading location...") }
     val repository = remember { JavaWeatherRepository() }
+    val context = LocalContext.current
+    val locationManager = remember { LocationManager(context) }
 
     // Default coordinates: Duluth, MN
-    val latitude = 46.8384
-    val longitude = -92.1800
+    var currentLatitude by remember { mutableStateOf(46.8384) }
+    var currentLongitude by remember { mutableStateOf(-92.1800) }
+    var hasTriedLocation by remember { mutableStateOf(false) }
+
+    // Permission launcher for location
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        if (fineLocationGranted || coarseLocationGranted) {
+            // Permission granted, get location and fetch weather
+            isLoading = true
+            errorMessage = null
+            weatherJson = null
+            currentWeatherIcon = null
+            currentWeatherDescription = null
+
+            repository.getCurrentLocationAndWeather(object : JavaWeatherRepository.LocationWeatherCallback {
+                override fun onLocationReceived(latitude: Double, longitude: Double, locationName: String) {
+                    currentLatitude = latitude
+                    currentLongitude = longitude
+                    currentLocation = locationName
+                }
+
+                override fun onWeatherSuccess(jsonData: String) {
+                    weatherJson = jsonData
+                    isLoading = false
+                    Log.d("JavaWeather", "Weather JSON: $jsonData")
+
+                    // Parse JSON to extract icon information
+                    try {
+                        val gson = Gson()
+                        val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                        weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                            currentWeatherIcon = weather.icon
+                            currentWeatherDescription = weather.description
+                        }
+                    } catch (e: Exception) {
+                        Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
+                    }
+                }
+
+                override fun onError(error: String) {
+                    errorMessage = error
+                    isLoading = false
+                    // Fallback to default coordinates on error
+                    currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
+                        override fun onSuccess(jsonData: String) {
+                            weatherJson = jsonData
+                            isLoading = false
+                            Log.d("JavaWeather", "Weather JSON (fallback): $jsonData")
+
+                            try {
+                                val gson = Gson()
+                                val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                                weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                    currentWeatherIcon = weather.icon
+                                    currentWeatherDescription = weather.description
+                                }
+                            } catch (e: Exception) {
+                                Log.e("JavaWeather", "Error parsing fallback weather data: ${e.message}")
+                            }
+                        }
+
+                        override fun onError(fallbackError: String) {
+                            errorMessage = "Location error: $error, Weather error: $fallbackError"
+                            isLoading = false
+                        }
+                    })
+                }
+            }, context)
+        } else {
+            // Permission denied, use default coordinates
+            currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+            isLoading = true
+            repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
+                override fun onSuccess(jsonData: String) {
+                    weatherJson = jsonData
+                    isLoading = false
+                    Log.d("JavaWeather", "Weather JSON (default): $jsonData")
+
+                    try {
+                        val gson = Gson()
+                        val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                        weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                            currentWeatherIcon = weather.icon
+                            currentWeatherDescription = weather.description
+                        }
+                    } catch (e: Exception) {
+                        Log.e("JavaWeather", "Error parsing default weather data: ${e.message}")
+                    }
+                }
+
+                override fun onError(defaultError: String) {
+                    errorMessage = defaultError
+                    isLoading = false
+                }
+            })
+        }
+        hasTriedLocation = true
+    }
+
+    // Auto-fetch location and weather data on first load
+    LaunchedEffect(Unit) {
+        if (!hasTriedLocation) {
+            if (locationManager.hasLocationPermission()) {
+                // Permission already granted, get location
+                isLoading = true
+                errorMessage = null
+                weatherJson = null
+                currentWeatherIcon = null
+                currentWeatherDescription = null
+
+                repository.getCurrentLocationAndWeather(object : JavaWeatherRepository.LocationWeatherCallback {
+                    override fun onLocationReceived(latitude: Double, longitude: Double, locationName: String) {
+                        currentLatitude = latitude
+                        currentLongitude = longitude
+                        currentLocation = locationName
+                    }
+
+                    override fun onWeatherSuccess(jsonData: String) {
+                        weatherJson = jsonData
+                        isLoading = false
+                        Log.d("JavaWeather", "Weather JSON: $jsonData")
+
+                        // Parse JSON to extract icon information
+                        try {
+                            val gson = Gson()
+                            val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                            weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                currentWeatherIcon = weather.icon
+                                currentWeatherDescription = weather.description
+                            }
+                        } catch (e: Exception) {
+                            Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
+                        }
+                    }
+
+                    override fun onError(error: String) {
+                        errorMessage = error
+                        isLoading = false
+                        // Fallback to default coordinates on error
+                        currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
+                            override fun onSuccess(jsonData: String) {
+                                weatherJson = jsonData
+                                isLoading = false
+                                Log.d("JavaWeather", "Weather JSON (fallback): $jsonData")
+
+                                try {
+                                    val gson = Gson()
+                                    val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                                    weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                        currentWeatherIcon = weather.icon
+                                        currentWeatherDescription = weather.description
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("JavaWeather", "Error parsing fallback weather data: ${e.message}")
+                                }
+                            }
+
+                            override fun onError(fallbackError: String) {
+                                errorMessage = "Location error: $error, Weather error: $fallbackError"
+                                isLoading = false
+                            }
+                        })
+                    }
+                }, context)
+            } else {
+                // Request location permission
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+            hasTriedLocation = true
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -572,7 +872,7 @@ fun JavaWeatherContent() {
                 } else {
                     // Use default coordinates
                     currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
-                    repository.getWeatherDataAsJson(latitude, longitude, object : JavaWeatherRepository.JsonDataCallback {
+                    repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
                         override fun onSuccess(jsonData: String) {
                             weatherJson = jsonData
                             isLoading = false
