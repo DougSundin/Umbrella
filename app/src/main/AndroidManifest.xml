@@ -41,6 +41,11 @@
             android:name=".DailyWeatherDetailActivity"
             android:exported="false"
             android:theme="@style/Theme.WhetherOrNot" />
+
+        <activity
+            android:name=".SavedLocationsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.WhetherOrNot" />
     </application>
 
 </manifest>

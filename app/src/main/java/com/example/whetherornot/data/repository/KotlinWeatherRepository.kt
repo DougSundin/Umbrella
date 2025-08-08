@@ -2,6 +2,7 @@ package com.example.whetherornot.data.repository
 
 import com.example.whetherornot.data.api.WeatherApiService
 import com.example.whetherornot.data.model.WeatherResponse
+import com.example.whetherornot.data.model.ZipCodeResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
@@ -145,6 +146,34 @@ class KotlinWeatherRepository {
         } catch (e: Exception) {
             Log.e("KotlinWeather", "Exception in getWeatherDataByZip: ${e.message}")
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Get location data by zip code for saving to database
+     * @param zipCode Zip code (e.g., "90210")
+     * @param countryCode Country code (default: "US")
+     * @return Result containing ZipCodeResponse or error
+     */
+    suspend fun getLocationDataByZip(zipCode: String, countryCode: String = "US"): Result<ZipCodeResponse> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val zipQuery = "$zipCode,$countryCode"
+                val response = apiService.getCoordinatesFromZip(
+                    zip = zipQuery,
+                    appid = WeatherApiService.API_KEY
+                )
+                if (response.isSuccessful && response.body() != null) {
+                    val zipCodeResponse = response.body()!!
+                    Log.d("KotlinWeather", "Got location data for zip $zipCode: ${zipCodeResponse.name}")
+                    Result.success(zipCodeResponse)
+                } else {
+                    Result.failure(Exception("Geocoding API call failed: ${response.code()} - ${response.message()}"))
+                }
+            } catch (e: Exception) {
+                Log.e("KotlinWeather", "Exception getting location data for zip $zipCode: ${e.message}")
+                Result.failure(e)
+            }
         }
     }
 }
