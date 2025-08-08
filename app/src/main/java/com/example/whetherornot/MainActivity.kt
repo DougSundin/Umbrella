@@ -1,6 +1,7 @@
 package com.example.whetherornot
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -8,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -320,7 +322,25 @@ fun KotlinWeatherContent() {
             Card(
                 modifier = Modifier
                     .padding(bottom = 16.dp)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable {
+                        weatherJson?.let { json ->
+                            val gson = Gson()
+                            val weatherResponse = try {
+                                gson.fromJson(json, WeatherResponse::class.java)
+                            } catch (e: Exception) {
+                                null
+                            }
+
+                            weatherResponse?.current?.let { current ->
+                                val intent = Intent(context, CurrentWeatherDetailActivity::class.java).apply {
+                                    putExtra("current_weather_json", gson.toJson(current))
+                                    putExtra("location", currentLocation)
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                    },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -444,7 +464,15 @@ fun KotlinWeatherContent() {
                             Card(
                                 modifier = Modifier
                                     .width(120.dp)
-                                    .clip(RoundedCornerShape(16.dp)),
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        val gson = Gson()
+                                        val intent = Intent(context, DailyWeatherDetailActivity::class.java).apply {
+                                            putExtra("daily_weather_json", gson.toJson(day))
+                                            putExtra("location", currentLocation)
+                                        }
+                                        context.startActivity(intent)
+                                    },
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer
                                 )
@@ -909,7 +937,25 @@ fun JavaWeatherContent() {
             Card(
                 modifier = Modifier
                     .padding(bottom = 16.dp)
-                    .clip(RoundedCornerShape(16.dp)),
+                    .clip(RoundedCornerShape(16.dp))
+                    .clickable {
+                        weatherJson?.let { json ->
+                            val gson = Gson()
+                            val weatherResponse = try {
+                                gson.fromJson(json, WeatherResponse::class.java)
+                            } catch (e: Exception) {
+                                null
+                            }
+
+                            weatherResponse?.current?.let { current ->
+                                val intent = Intent(context, CurrentWeatherDetailActivity::class.java).apply {
+                                    putExtra("current_weather_json", gson.toJson(current))
+                                    putExtra("location", currentLocation)
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                    },
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
@@ -1033,7 +1079,15 @@ fun JavaWeatherContent() {
                             Card(
                                 modifier = Modifier
                                     .width(120.dp)
-                                    .clip(RoundedCornerShape(16.dp)),
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        val gson = Gson()
+                                        val intent = Intent(context, DailyWeatherDetailActivity::class.java).apply {
+                                            putExtra("daily_weather_json", gson.toJson(day))
+                                            putExtra("location", currentLocation)
+                                        }
+                                        context.startActivity(intent)
+                                    },
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.primaryContainer
                                 )
