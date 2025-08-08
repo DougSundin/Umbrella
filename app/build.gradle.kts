@@ -51,6 +51,9 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
+    // Material Icons Extended - needed for ExpandLess, ExpandMore, etc.
+    implementation("androidx.compose.material:material-icons-extended:1.5.4")
+
     // Fragment support
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.fragment:fragment:1.6.2")
