@@ -19,6 +19,14 @@
             </PendingDiffInfo>
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/icon_setup_guide.md">
+          <value>
+            <PendingDiffInfo>
+              <option name="filePath" value="$PROJECT_DIR$/icon_setup_guide.md" />
+              <option name="updatedContent" value="# App Icon Setup Guide&#10;&#10;## Required Icon Sizes for Umbrella Icon&#10;&#10;Place your converted umbrella icons in these directories with these exact sizes:&#10;&#10;### Standard Icons (ic_launcher.png)&#10;- `app/src/main/res/mipmap-mdpi/ic_launcher.png` → 48×48 px&#10;- `app/src/main/res/mipmap-hdpi/ic_launcher.png` → 72×72 px&#10;- `app/src/main/res/mipmap-xhdpi/ic_launcher.png` → 96×96 px&#10;- `app/src/main/res/mipmap-xxhdpi/ic_launcher.png` → 144×144 px&#10;- `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` → 192×192 px&#10;&#10;### Round Icons (ic_launcher_round.png) - Same sizes&#10;- `app/src/main/res/mipmap-mdpi/ic_launcher_round.png` → 48×48 px&#10;- `app/src/main/res/mipmap-hdpi/ic_launcher_round.png` → 72×72 px&#10;- `app/src/main/res/mipmap-xhdpi/ic_launcher_round.png` → 96×96 px&#10;- `app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png` → 144×144 px&#10;- `app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png` → 192×192 px&#10;&#10;## Steps:&#10;1. Convert Umbrella.jpg to PNG format&#10;2. Create versions at each size listed above&#10;3. Replace the existing .webp files in each mipmap directory&#10;4. Clean and rebuild your project&#10;&#10;## Tools for Icon Generation:&#10;- Android Studio's built-in Image Asset Studio (File → New → Image Asset)&#10;- Online tools like https://icon.kitchen/&#10;- Image editing software like GIMP, Photoshop, or Canva" />
+            </PendingDiffInfo>
+          </value>
+        </entry>
       </map>
     </option>
   </component>
