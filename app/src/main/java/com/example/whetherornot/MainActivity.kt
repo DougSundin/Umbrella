@@ -126,6 +126,7 @@ fun KotlinWeatherContent() {
     var savedLocations by remember { mutableStateOf<List<ZipCodeResponse>>(emptyList()) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
     var isFocused by remember { mutableStateOf(false) }
+    var isUserTyping by remember { mutableStateOf(false) }
 
     // Load saved locations from database
     LaunchedEffect(Unit) {
@@ -325,9 +326,15 @@ fun KotlinWeatherContent() {
             OutlinedTextField(
                 value = zipCodeInput,
                 onValueChange = {
+                    val previousValue = zipCodeInput
                     zipCodeInput = it
+                    isUserTyping = true
+
                     // Show dropdown when user types and there are saved locations
                     if (it.isNotEmpty() && savedLocations.isNotEmpty()) {
+                        isDropdownExpanded = true
+                    } else if (it.isEmpty() && savedLocations.isNotEmpty()) {
+                        // If user clears the field, show all locations
                         isDropdownExpanded = true
                     } else {
                         isDropdownExpanded = false
@@ -340,6 +347,7 @@ fun KotlinWeatherContent() {
                     .fillMaxWidth()
                     .clickable {
                         if (savedLocations.isNotEmpty()) {
+                            isUserTyping = false // User clicked, not typing
                             isDropdownExpanded = !isDropdownExpanded
                         }
                     },
@@ -347,7 +355,10 @@ fun KotlinWeatherContent() {
                 trailingIcon = {
                     if (savedLocations.isNotEmpty()) {
                         IconButton(
-                            onClick = { isDropdownExpanded = !isDropdownExpanded }
+                            onClick = {
+                                isUserTyping = false // User clicked icon, not typing
+                                isDropdownExpanded = !isDropdownExpanded
+                            }
                         ) {
                             Icon(
                                 imageVector = if (isDropdownExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
@@ -367,10 +378,12 @@ fun KotlinWeatherContent() {
                     .fillMaxWidth(0.9f)
                     .heightIn(max = 200.dp) // Limit height and allow scrolling
             ) {
-                // Filter saved locations based on zip code input
-                val filteredLocations = if (zipCodeInput.isEmpty()) {
+                // Filter saved locations based on user interaction
+                val filteredLocations = if (!isUserTyping || zipCodeInput.isEmpty()) {
+                    // Show all locations when user clicked to open dropdown or field is empty
                     savedLocations.take(8) // Show first 8 when no filter
                 } else {
+                    // Filter only when user is actively typing
                     savedLocations.filter { location ->
                         location.zip.contains(zipCodeInput, ignoreCase = true) ||
                         location.name.contains(zipCodeInput, ignoreCase = true)
@@ -889,6 +902,7 @@ fun JavaWeatherContent() {
     // States for dropdown functionality
     var savedLocations by remember { mutableStateOf<List<ZipCodeResponse>>(emptyList()) }
     var isDropdownExpanded by remember { mutableStateOf(false) }
+    var isUserTyping by remember { mutableStateOf(false) }
 
     // Load saved locations from database
     LaunchedEffect(Unit) {
@@ -1199,8 +1213,13 @@ fun JavaWeatherContent() {
                 value = zipCodeInput,
                 onValueChange = {
                     zipCodeInput = it
+                    isUserTyping = true
+
                     // Show dropdown when user types and there are saved locations
                     if (it.isNotEmpty() && savedLocations.isNotEmpty()) {
+                        isDropdownExpanded = true
+                    } else if (it.isEmpty() && savedLocations.isNotEmpty()) {
+                        // If user clears the field, show all locations
                         isDropdownExpanded = true
                     } else {
                         isDropdownExpanded = false
@@ -1213,6 +1232,7 @@ fun JavaWeatherContent() {
                     .fillMaxWidth()
                     .clickable {
                         if (savedLocations.isNotEmpty()) {
+                            isUserTyping = false // User clicked, not typing
                             isDropdownExpanded = !isDropdownExpanded
                         }
                     },
@@ -1220,7 +1240,10 @@ fun JavaWeatherContent() {
                 trailingIcon = {
                     if (savedLocations.isNotEmpty()) {
                         IconButton(
-                            onClick = { isDropdownExpanded = !isDropdownExpanded }
+                            onClick = {
+                                isUserTyping = false // User clicked icon, not typing
+                                isDropdownExpanded = !isDropdownExpanded
+                            }
                         ) {
                             Icon(
                                 imageVector = if (isDropdownExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
@@ -1240,10 +1263,12 @@ fun JavaWeatherContent() {
                     .fillMaxWidth(0.9f)
                     .heightIn(max = 200.dp) // Limit height and allow scrolling
             ) {
-                // Filter saved locations based on zip code input
-                val filteredLocations = if (zipCodeInput.isEmpty()) {
+                // Filter saved locations based on user interaction
+                val filteredLocations = if (!isUserTyping || zipCodeInput.isEmpty()) {
+                    // Show all locations when user clicked to open dropdown or field is empty
                     savedLocations.take(8) // Show first 8 when no filter
                 } else {
+                    // Filter only when user is actively typing
                     savedLocations.filter { location ->
                         location.zip.contains(zipCodeInput, ignoreCase = true) ||
                         location.name.contains(zipCodeInput, ignoreCase = true)
