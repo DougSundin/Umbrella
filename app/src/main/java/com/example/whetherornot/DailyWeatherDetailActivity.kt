@@ -20,7 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.whetherornot.data.model.DailyWeather
-import com.example.whetherornot.ui.theme.WhetherOrNotTheme
+import com.example.whetherornot.ui.theme.UmbrellaTheme
 import com.google.gson.Gson
 import java.text.SimpleDateFormat
 import java.util.*
@@ -34,7 +34,7 @@ class DailyWeatherDetailActivity : ComponentActivity() {
         val location = intent.getStringExtra("location") ?: "Unknown Location"
 
         setContent {
-            WhetherOrNotTheme {
+            UmbrellaTheme {
                 DailyWeatherDetailScreen(
                     dailyWeatherJson = dailyWeatherJson,
                     location = location,

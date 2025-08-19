@@ -1,6 +1,7 @@
 package com.example.whetherornot
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
@@ -16,6 +17,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -26,13 +30,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.whetherornot.ui.theme.WhetherOrNotTheme
+import com.example.whetherornot.ui.theme.UmbrellaTheme
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import com.example.whetherornot.data.repository.KotlinWeatherRepository
 import com.example.whetherornot.data.repository.JavaWeatherRepository
+import com.example.whetherornot.data.repository.LocationRepository
 import com.example.whetherornot.data.model.WeatherResponse
+import com.example.whetherornot.data.model.ZipCodeResponse
 import com.example.whetherornot.utils.LocationManager
 import com.google.gson.Gson
 
@@ -41,7 +47,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            WhetherOrNotTheme {
+            UmbrellaTheme {
                 WeatherApp()
             }
         }
@@ -53,6 +59,12 @@ class MainActivity : ComponentActivity() {
 fun WeatherApp() {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Kotlin Weather", "Java Weather")
+
+    // Shared state for location data between tabs
+    var sharedZipCodeInput by remember { mutableStateOf("") }
+    var sharedCurrentLocation by remember { mutableStateOf("Loading location...") }
+    var sharedCurrentLatitude by remember { mutableStateOf(46.8384) } // Default: Duluth, MN
+    var sharedCurrentLongitude by remember { mutableStateOf(-92.1800) }
 
     Scaffold(
         topBar = {
@@ -92,35 +104,94 @@ fun WeatherApp() {
                 }
             }
 
-            // Content area for each tab
+            // Content area for each tab - pass shared state
             when (selectedTabIndex) {
-                0 -> KotlinWeatherContent()
-                1 -> JavaWeatherContent()
+                0 -> KotlinWeatherContent(
+                    sharedZipCodeInput = sharedZipCodeInput,
+                    onZipCodeInputChange = { sharedZipCodeInput = it },
+                    sharedCurrentLocation = sharedCurrentLocation,
+                    onCurrentLocationChange = { sharedCurrentLocation = it },
+                    sharedCurrentLatitude = sharedCurrentLatitude,
+                    onCurrentLatitudeChange = { sharedCurrentLatitude = it },
+                    sharedCurrentLongitude = sharedCurrentLongitude,
+                    onCurrentLongitudeChange = { sharedCurrentLongitude = it }
+                )
+                1 -> JavaWeatherContent(
+                    sharedZipCodeInput = sharedZipCodeInput,
+                    onZipCodeInputChange = { sharedZipCodeInput = it },
+                    sharedCurrentLocation = sharedCurrentLocation,
+                    onCurrentLocationChange = { sharedCurrentLocation = it },
+                    sharedCurrentLatitude = sharedCurrentLatitude,
+                    onCurrentLatitudeChange = { sharedCurrentLatitude = it },
+                    sharedCurrentLongitude = sharedCurrentLongitude,
+                    onCurrentLongitudeChange = { sharedCurrentLongitude = it }
+                )
             }
         }
     }
 }
 
 @Composable
-fun KotlinWeatherContent() {
+fun KotlinWeatherContent(
+    sharedZipCodeInput: String,
+    onZipCodeInputChange: (String) -> Unit,
+    sharedCurrentLocation: String,
+    onCurrentLocationChange: (String) -> Unit,
+    sharedCurrentLatitude: Double,
+    onCurrentLatitudeChange: (Double) -> Unit,
+    sharedCurrentLongitude: Double,
+    onCurrentLongitudeChange: (Double) -> Unit
+) {
     var isLoading by remember { mutableStateOf(false) }
     var weatherJson by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var currentWeatherIcon by remember { mutableStateOf<String?>(null) }
     var currentWeatherDescription by remember { mutableStateOf<String?>(null) }
-    var zipCodeInput by remember { mutableStateOf("") }
-    var currentLocation by remember { mutableStateOf("Loading location...") }
+    // Use shared state instead of local state
+    var zipCodeInput by remember { mutableStateOf(sharedZipCodeInput) }
+    var currentLocation by remember { mutableStateOf(sharedCurrentLocation) }
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { KotlinWeatherRepository() }
     val context = LocalContext.current
     val locationManager = remember { LocationManager(context) }
+    val locationRepository = remember { LocationRepository(context) }
 
-    // Default coordinates: Duluth, MN
-    var currentLatitude by remember { mutableStateOf(46.8384) }
-    var currentLongitude by remember { mutableStateOf(-92.1800) }
+    // States for dropdown functionality
+    var savedLocations by remember { mutableStateOf<List<ZipCodeResponse>>(emptyList()) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
+    var isFocused by remember { mutableStateOf(false) }
+    var isUserTyping by remember { mutableStateOf(false) }
+
+    // Load saved locations from database
+    LaunchedEffect(Unit) {
+        locationRepository.getAllLocations().collect { locations ->
+            savedLocations = locations
+        }
+    }
+
+    // Use shared coordinates instead of local coordinates
+    var currentLatitude by remember { mutableStateOf(sharedCurrentLatitude) }
+    var currentLongitude by remember { mutableStateOf(sharedCurrentLongitude) }
     var hasTriedLocation by remember { mutableStateOf(false) }
 
-    // Function to fetch weather data
+    // Sync local state with shared state when shared state changes
+    LaunchedEffect(sharedZipCodeInput) {
+        zipCodeInput = sharedZipCodeInput
+    }
+
+    LaunchedEffect(sharedCurrentLocation) {
+        currentLocation = sharedCurrentLocation
+    }
+
+    LaunchedEffect(sharedCurrentLatitude) {
+        currentLatitude = sharedCurrentLatitude
+    }
+
+    LaunchedEffect(sharedCurrentLongitude) {
+        currentLongitude = sharedCurrentLongitude
+    }
+
+    // Function to fetch weather data (moved before savedLocationsLauncher)
     suspend fun fetchWeatherData(lat: Double, lon: Double, locationName: String) {
         isLoading = true
         errorMessage = null
@@ -128,6 +199,13 @@ fun KotlinWeatherContent() {
         currentWeatherIcon = null
         currentWeatherDescription = null
         currentLocation = locationName
+        onCurrentLocationChange(locationName)
+
+        // Update shared coordinates
+        onCurrentLatitudeChange(lat)
+        onCurrentLongitudeChange(lon)
+        currentLatitude = lat
+        currentLongitude = lon
 
         try {
             val result = repository.getWeatherDataAsJson(lat, lon)
@@ -148,6 +226,28 @@ fun KotlinWeatherContent() {
                     } catch (e: Exception) {
                         Log.e("KotlinWeather", "Error parsing weather data: ${e.message}")
                     }
+
+                    // Save location to database if it was a zip code search
+                    if (zipCodeInput.isNotBlank()) {
+                        try {
+                            coroutineScope.launch {
+                                // First get the location data from the zip code
+                                val zipResult = repository.getLocationDataByZip(zipCodeInput.trim())
+                                zipResult.fold(
+                                    onSuccess = { zipCodeResponse ->
+                                        // Save the location to database
+                                        locationRepository.saveLocation(zipCodeResponse)
+                                        Log.d("KotlinWeather", "Location saved: ${zipCodeResponse.name}")
+                                    },
+                                    onFailure = { e ->
+                                        Log.e("KotlinWeather", "Failed to save location: ${e.message}")
+                                    }
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.e("KotlinWeather", "Error saving location: ${e.message}")
+                        }
+                    }
                 },
                 onFailure = { exception ->
                     errorMessage = "Error: ${exception.message}"
@@ -157,6 +257,36 @@ fun KotlinWeatherContent() {
         } catch (e: Exception) {
             errorMessage = "Unexpected error: ${e.message}"
             isLoading = false
+        }
+    }
+
+    // Activity result launcher for saved locations
+    val savedLocationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.let { data ->
+                val selectedZip = data.getStringExtra("selected_zip")
+                val selectedName = data.getStringExtra("selected_name")
+                val selectedLat = data.getDoubleExtra("selected_lat", 0.0)
+                val selectedLon = data.getDoubleExtra("selected_lon", 0.0)
+
+                if (selectedZip != null && selectedName != null) {
+                    zipCodeInput = selectedZip
+                    onZipCodeInputChange(selectedZip)
+                    currentLocation = selectedName
+                    onCurrentLocationChange(selectedName)
+                    currentLatitude = selectedLat
+                    onCurrentLatitudeChange(selectedLat)
+                    currentLongitude = selectedLon
+                    onCurrentLongitudeChange(selectedLon)
+
+                    // Fetch weather data for selected location
+                    coroutineScope.launch {
+                        fetchWeatherData(selectedLat, selectedLon, selectedName)
+                    }
+                }
+            }
         }
     }
 
@@ -174,21 +304,26 @@ fun KotlinWeatherContent() {
                     locationManager.getCurrentLocation()?.let { locationData ->
                         currentLatitude = locationData.latitude
                         currentLongitude = locationData.longitude
+                        onCurrentLatitudeChange(locationData.latitude)
+                        onCurrentLongitudeChange(locationData.longitude)
                         fetchWeatherData(locationData.latitude, locationData.longitude, locationData.locationName)
                     } ?: run {
                         // Location unavailable, use default coordinates
                         currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        onCurrentLocationChange(currentLocation)
                         fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
                     }
                 } catch (e: Exception) {
                     Log.e("KotlinWeather", "Error getting location: ${e.message}")
                     // Fallback to default coordinates
                     currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    onCurrentLocationChange(currentLocation)
                     fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
                 }
             } else {
                 // Permission denied, use default coordinates
                 currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                onCurrentLocationChange(currentLocation)
                 fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
             }
             hasTriedLocation = true
@@ -204,16 +339,20 @@ fun KotlinWeatherContent() {
                     locationManager.getCurrentLocation()?.let { locationData ->
                         currentLatitude = locationData.latitude
                         currentLongitude = locationData.longitude
+                        onCurrentLatitudeChange(locationData.latitude)
+                        onCurrentLongitudeChange(locationData.longitude)
                         fetchWeatherData(locationData.latitude, locationData.longitude, locationData.locationName)
                     } ?: run {
                         // Location unavailable, use default coordinates
                         currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        onCurrentLocationChange(currentLocation)
                         fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
                     }
                 } catch (e: Exception) {
                     Log.e("KotlinWeather", "Error getting location: ${e.message}")
                     // Fallback to default coordinates
                     currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    onCurrentLocationChange(currentLocation)
                     fetchWeatherData(currentLatitude, currentLongitude, currentLocation)
                 }
             } else {
@@ -249,72 +388,259 @@ fun KotlinWeatherContent() {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Zip Code Search Field
-        OutlinedTextField(
-            value = zipCodeInput,
-            onValueChange = { zipCodeInput = it },
-            label = { Text("Enter Zip Code") },
-            placeholder = { Text("e.g., 90210") },
-            singleLine = true,
+        // Zip Code Search Field with Dropdown
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            enabled = !isLoading
-        )
+                .padding(bottom = 8.dp)
+        ) {
+            OutlinedTextField(
+                value = zipCodeInput,
+                onValueChange = {
+                    val previousValue = zipCodeInput
+                    zipCodeInput = it
+                    isUserTyping = true
 
-        Button(
-            onClick = {
-                coroutineScope.launch {
-                    isLoading = true
-                    errorMessage = null
-                    weatherJson = null
-                    currentWeatherIcon = null
-                    currentWeatherDescription = null
-
-                    try {
-                        val result = if (zipCodeInput.isNotBlank()) {
-                            // Use zip code search
-                            currentLocation = "Zip Code: ${zipCodeInput.trim()}"
-                            repository.getWeatherDataByZip(zipCodeInput.trim())
-                        } else {
-                            // Use default coordinates
-                            currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
-                            repository.getWeatherDataAsJson(currentLatitude, currentLongitude)
+                    // Show dropdown when user types and there are saved locations
+                    if (it.isNotEmpty() && savedLocations.isNotEmpty()) {
+                        isDropdownExpanded = true
+                    } else if (it.isEmpty() && savedLocations.isNotEmpty()) {
+                        // If user clears the field, show all locations
+                        isDropdownExpanded = true
+                    } else {
+                        isDropdownExpanded = false
+                    }
+                },
+                label = { Text("Enter Zip Code") },
+                placeholder = { Text("e.g., 90210") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (savedLocations.isNotEmpty()) {
+                            isUserTyping = false // User clicked, not typing
+                            isDropdownExpanded = !isDropdownExpanded
                         }
-
-                        result.fold(
-                            onSuccess = { json ->
-                                weatherJson = json
-                                isLoading = false
-                                Log.d("KotlinWeather", "Weather JSON: $json")
-
-                                // Parse JSON to extract icon information
-                                try {
-                                    val gson = Gson()
-                                    val weatherResponse = gson.fromJson(json, WeatherResponse::class.java)
-                                    weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
-                                        currentWeatherIcon = weather.icon
-                                        currentWeatherDescription = weather.description
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e("KotlinWeather", "Error parsing weather data: ${e.message}")
-                                }
-                            },
-                            onFailure = { exception ->
-                                errorMessage = "Error: ${exception.message}"
-                                isLoading = false
+                    },
+                enabled = !isLoading,
+                trailingIcon = {
+                    if (savedLocations.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                isUserTyping = false // User clicked icon, not typing
+                                isDropdownExpanded = !isDropdownExpanded
                             }
-                        )
-                    } catch (e: Exception) {
-                        errorMessage = "Unexpected error: ${e.message}"
-                        isLoading = false
+                        ) {
+                            Icon(
+                                imageVector = if (isDropdownExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (isDropdownExpanded) "Collapse dropdown" else "Expand dropdown",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-            },
-            enabled = !isLoading,
-            modifier = Modifier.padding(bottom = 16.dp)
+            )
+
+            // Dropdown Menu using stable Material3 API
+            DropdownMenu(
+                expanded = isDropdownExpanded,
+                onDismissRequest = { isDropdownExpanded = false },
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .heightIn(max = 200.dp) // Limit height and allow scrolling
+            ) {
+                // Filter saved locations based on user interaction
+                val filteredLocations = if (!isUserTyping || zipCodeInput.isEmpty()) {
+                    // Show all locations when user clicked to open dropdown or field is empty
+                    savedLocations.take(8) // Show first 8 when no filter
+                } else {
+                    // Filter only when user is actively typing
+                    savedLocations.filter { location ->
+                        location.zip.contains(zipCodeInput, ignoreCase = true) ||
+                        location.name.contains(zipCodeInput, ignoreCase = true)
+                    }.take(5) // Limit to 5 most recent matches
+                }
+
+                if (filteredLocations.isEmpty()) {
+                    // Show "No results" item
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = if (zipCodeInput.isEmpty()) "No saved locations" else "No matching saved locations",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        },
+                        onClick = { },
+                        enabled = false
+                    )
+                } else {
+                    // Show filtered saved locations
+                    filteredLocations.forEach { location ->
+                        DropdownMenuItem(
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = location.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Zip: ${location.zip}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        maxLines = 1
+                                    )
+                                }
+                            },
+                            onClick = {
+                                // Set the zip code and fetch weather data
+                                zipCodeInput = location.zip
+                                onZipCodeInputChange(location.zip) // Update shared state
+                                currentLocation = location.name
+                                onCurrentLocationChange(location.name) // Update shared state
+                                isDropdownExpanded = false
+
+                                // Fetch weather data for selected location using stored coordinates
+                                coroutineScope.launch {
+                                    fetchWeatherData(location.lat, location.lon, location.name)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // Show divider and "View all" option if there are many saved locations
+                    if (savedLocations.size > 8) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "View all saved locations...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            },
+                            onClick = {
+                                isDropdownExpanded = false
+                                val intent = Intent(context, SavedLocationsActivity::class.java)
+                                savedLocationsLauncher.launch(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
+        // Button Row - Fetch Weather Data and View Saved Locations
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Fetch Weather Data")
+            Button(
+                onClick = {
+                    coroutineScope.launch {
+                        isLoading = true
+                        errorMessage = null
+                        weatherJson = null
+                        currentWeatherIcon = null
+                        currentWeatherDescription = null
+
+                        try {
+                            val result = if (zipCodeInput.isNotBlank()) {
+                                // Use zip code search
+                                currentLocation = "Zip Code: ${zipCodeInput.trim()}"
+                                repository.getWeatherDataByZip(zipCodeInput.trim())
+                            } else {
+                                // Use default coordinates
+                                currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                                repository.getWeatherDataAsJson(currentLatitude, currentLongitude)
+                            }
+
+                            result.fold(
+                                onSuccess = { json ->
+                                    weatherJson = json
+                                    isLoading = false
+                                    Log.d("KotlinWeather", "Weather JSON: $json")
+
+                                    // Parse JSON to extract icon information
+                                    try {
+                                        val gson = Gson()
+                                        val weatherResponse = gson.fromJson(json, WeatherResponse::class.java)
+                                        weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                            currentWeatherIcon = weather.icon
+                                            currentWeatherDescription = weather.description
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("KotlinWeather", "Error parsing weather data: ${e.message}")
+                                    }
+
+                                    // Save location to database if it was a zip code search
+                                    if (zipCodeInput.isNotBlank()) {
+                                        try {
+                                            coroutineScope.launch {
+                                                // First get the location data from the zip code
+                                                val zipResult = repository.getLocationDataByZip(zipCodeInput.trim())
+                                                zipResult.fold(
+                                                    onSuccess = { zipCodeResponse ->
+                                                        // Save the location to database
+                                                        locationRepository.saveLocation(zipCodeResponse)
+                                                        Log.d("KotlinWeather", "Location saved: ${zipCodeResponse.name}")
+                                                    },
+                                                    onFailure = { e ->
+                                                        Log.e("KotlinWeather", "Failed to save location: ${e.message}")
+                                                    }
+                                                )
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("KotlinWeather", "Error saving location: ${e.message}")
+                                        }
+                                    }
+                                },
+                                onFailure = { exception ->
+                                    errorMessage = "Error: ${exception.message}"
+                                    isLoading = false
+                                }
+                            )
+                        } catch (e: Exception) {
+                            errorMessage = "Unexpected error: ${e.message}"
+                            isLoading = false
+                        }
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Fetch Weather Data")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(context, SavedLocationsActivity::class.java)
+                    savedLocationsLauncher.launch(intent)
+                },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("View Saved")
+            }
         }
 
         // Weather Icon Display
@@ -426,6 +752,103 @@ fun KotlinWeatherContent() {
                                         rotationZ = current.windDeg.toFloat()
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Hourly Weather Forecast Row
+        weatherJson?.let { json ->
+            val gson = Gson()
+            val weatherResponse = try {
+                gson.fromJson(json, WeatherResponse::class.java)
+            } catch (e: Exception) {
+                Log.e("KotlinWeather", "Error parsing hourly weather data: ${e.message}")
+                null
+            }
+
+            weatherResponse?.hourly?.take(24)?.let { hourlyWeather ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = "24-Hour Forecast",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        items(hourlyWeather) { hour ->
+                            Card(
+                                modifier = Modifier
+                                    .width(100.dp)
+                                    .clip(RoundedCornerShape(16.dp)),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    // Time
+                                    val timeFormatter = java.text.SimpleDateFormat("h a", java.util.Locale.getDefault())
+                                    val date = java.util.Date(hour.dt * 1000)
+
+                                    Text(
+                                        text = timeFormatter.format(date),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+
+                                    // Weather icon
+                                    hour.weather.firstOrNull()?.let { weather ->
+                                        AsyncImage(
+                                            model = "https://openweathermap.org/img/wn/${weather.icon}@2x.png",
+                                            contentDescription = weather.description,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .padding(bottom = 4.dp)
+                                        )
+                                    }
+
+                                    // Temperature
+                                    Text(
+                                        text = "${hour.temp.toInt()}°",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+
+                                    // Wind speed with direction
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${hour.windSpeed.toInt()}",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                        Text(
+                                            text = "↑",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.graphicsLayer {
+                                                rotationZ = hour.windDeg.toFloat()
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -632,22 +1055,133 @@ fun KotlinWeatherContent() {
 }
 
 @Composable
-fun JavaWeatherContent() {
+fun JavaWeatherContent(
+    sharedZipCodeInput: String,
+    onZipCodeInputChange: (String) -> Unit,
+    sharedCurrentLocation: String,
+    onCurrentLocationChange: (String) -> Unit,
+    sharedCurrentLatitude: Double,
+    onCurrentLatitudeChange: (Double) -> Unit,
+    sharedCurrentLongitude: Double,
+    onCurrentLongitudeChange: (Double) -> Unit
+) {
     var isLoading by remember { mutableStateOf(false) }
     var weatherJson by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var currentWeatherIcon by remember { mutableStateOf<String?>(null) }
     var currentWeatherDescription by remember { mutableStateOf<String?>(null) }
-    var zipCodeInput by remember { mutableStateOf("") }
-    var currentLocation by remember { mutableStateOf("Loading location...") }
+    // Use shared state instead of local state
+    var zipCodeInput by remember { mutableStateOf(sharedZipCodeInput) }
+    var currentLocation by remember { mutableStateOf(sharedCurrentLocation) }
     val repository = remember { JavaWeatherRepository() }
     val context = LocalContext.current
     val locationManager = remember { LocationManager(context) }
+    val locationRepository = remember { LocationRepository(context) }
+    val coroutineScope = rememberCoroutineScope()
 
-    // Default coordinates: Duluth, MN
-    var currentLatitude by remember { mutableStateOf(46.8384) }
-    var currentLongitude by remember { mutableStateOf(-92.1800) }
+    // States for dropdown functionality
+    var savedLocations by remember { mutableStateOf<List<ZipCodeResponse>>(emptyList()) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
+    var isUserTyping by remember { mutableStateOf(false) }
+
+    // Load saved locations from database
+    LaunchedEffect(Unit) {
+        locationRepository.getAllLocations().collect { locations ->
+            savedLocations = locations
+        }
+    }
+
+    // Use shared coordinates instead of local coordinates
+    var currentLatitude by remember { mutableStateOf(sharedCurrentLatitude) }
+    var currentLongitude by remember { mutableStateOf(sharedCurrentLongitude) }
     var hasTriedLocation by remember { mutableStateOf(false) }
+
+    // Sync local state with shared state when shared state changes
+    LaunchedEffect(sharedZipCodeInput) {
+        zipCodeInput = sharedZipCodeInput
+    }
+
+    LaunchedEffect(sharedCurrentLocation) {
+        currentLocation = sharedCurrentLocation
+    }
+
+    LaunchedEffect(sharedCurrentLatitude) {
+        currentLatitude = sharedCurrentLatitude
+    }
+
+    LaunchedEffect(sharedCurrentLongitude) {
+        currentLongitude = sharedCurrentLongitude
+    }
+
+    // Function to fetch weather data (updated to use shared state)
+    fun fetchWeatherData(lat: Double, lon: Double, locationName: String) {
+        isLoading = true
+        errorMessage = null
+        weatherJson = null
+        currentWeatherIcon = null
+        currentWeatherDescription = null
+        currentLocation = locationName
+        onCurrentLocationChange(locationName)
+
+        // Update shared coordinates
+        onCurrentLatitudeChange(lat)
+        onCurrentLongitudeChange(lon)
+        currentLatitude = lat
+        currentLongitude = lon
+
+        repository.getWeatherDataAsJson(lat, lon, object : JavaWeatherRepository.JsonDataCallback {
+            override fun onSuccess(jsonData: String) {
+                weatherJson = jsonData
+                isLoading = false
+                Log.d("JavaWeather", "Weather JSON: $jsonData")
+
+                // Parse JSON to extract icon information
+                try {
+                    val gson = Gson()
+                    val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                    weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                        currentWeatherIcon = weather.icon
+                        currentWeatherDescription = weather.description
+                    }
+                } catch (e: Exception) {
+                    Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
+                }
+            }
+
+            override fun onError(error: String) {
+                errorMessage = "Error: $error"
+                isLoading = false
+            }
+        })
+    }
+
+    // Activity result launcher for saved locations
+    val savedLocationsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            result.data?.let { data ->
+                val selectedZip = data.getStringExtra("selected_zip")
+                val selectedName = data.getStringExtra("selected_name")
+                val selectedLat = data.getDoubleExtra("selected_lat", 0.0)
+                val selectedLon = data.getDoubleExtra("selected_lon", 0.0)
+
+                if (selectedZip != null && selectedName != null) {
+                    zipCodeInput = selectedZip
+                    onZipCodeInputChange(selectedZip)
+                    currentLocation = selectedName
+                    onCurrentLocationChange(selectedName)
+                    currentLatitude = selectedLat
+                    onCurrentLatitudeChange(selectedLat)
+                    currentLongitude = selectedLon
+                    onCurrentLongitudeChange(selectedLon)
+
+                    // Fetch weather data for selected location
+                    fetchWeatherData(selectedLat, selectedLon, selectedName)
+                }
+            }
+        }
+    }
 
     // Permission launcher for location
     val locationPermissionLauncher = rememberLauncherForActivityResult(
@@ -668,7 +1202,10 @@ fun JavaWeatherContent() {
                 override fun onLocationReceived(latitude: Double, longitude: Double, locationName: String) {
                     currentLatitude = latitude
                     currentLongitude = longitude
+                    onCurrentLatitudeChange(latitude)
+                    onCurrentLongitudeChange(longitude)
                     currentLocation = locationName
+                    onCurrentLocationChange(locationName)
                 }
 
                 override fun onWeatherSuccess(jsonData: String) {
@@ -694,6 +1231,7 @@ fun JavaWeatherContent() {
                     isLoading = false
                     // Fallback to default coordinates on error
                     currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                    onCurrentLocationChange(currentLocation)
                     repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
                         override fun onSuccess(jsonData: String) {
                             weatherJson = jsonData
@@ -722,6 +1260,7 @@ fun JavaWeatherContent() {
         } else {
             // Permission denied, use default coordinates
             currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+            onCurrentLocationChange(currentLocation)
             isLoading = true
             repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
                 override fun onSuccess(jsonData: String) {
@@ -765,7 +1304,10 @@ fun JavaWeatherContent() {
                     override fun onLocationReceived(latitude: Double, longitude: Double, locationName: String) {
                         currentLatitude = latitude
                         currentLongitude = longitude
+                        onCurrentLatitudeChange(latitude)
+                        onCurrentLongitudeChange(longitude)
                         currentLocation = locationName
+                        onCurrentLocationChange(locationName)
                     }
 
                     override fun onWeatherSuccess(jsonData: String) {
@@ -791,6 +1333,7 @@ fun JavaWeatherContent() {
                         isLoading = false
                         // Fallback to default coordinates on error
                         currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        onCurrentLocationChange(currentLocation)
                         repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
                             override fun onSuccess(jsonData: String) {
                                 weatherJson = jsonData
@@ -849,87 +1392,252 @@ fun JavaWeatherContent() {
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // Zip Code Search Field
-        OutlinedTextField(
-            value = zipCodeInput,
-            onValueChange = { zipCodeInput = it },
-            label = { Text("Enter Zip Code") },
-            placeholder = { Text("e.g., 90210") },
-            singleLine = true,
+        // Zip Code Search Field with Dropdown
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
-            enabled = !isLoading
-        )
-
-        Button(
-            onClick = {
-                isLoading = true
-                errorMessage = null
-                weatherJson = null
-                currentWeatherIcon = null
-                currentWeatherDescription = null
-
-                if (zipCodeInput.isNotBlank()) {
-                    // Use zip code search
-                    currentLocation = "Zip Code: ${zipCodeInput.trim()}"
-                    repository.getWeatherDataByZip(zipCodeInput.trim(), object : JavaWeatherRepository.JsonDataCallback {
-                        override fun onSuccess(jsonData: String) {
-                            weatherJson = jsonData
-                            isLoading = false
-                            Log.d("JavaWeather", "Weather JSON (from zip): $jsonData")
-
-                            // Parse JSON to extract icon information
-                            try {
-                                val gson = Gson()
-                                val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
-                                weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
-                                    currentWeatherIcon = weather.icon
-                                    currentWeatherDescription = weather.description
-                                }
-                            } catch (e: Exception) {
-                                Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
-                            }
-                        }
-
-                        override fun onError(error: String) {
-                            errorMessage = error
-                            isLoading = false
-                        }
-                    })
-                } else {
-                    // Use default coordinates
-                    currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
-                    repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
-                        override fun onSuccess(jsonData: String) {
-                            weatherJson = jsonData
-                            isLoading = false
-                            Log.d("JavaWeather", "Weather JSON: $jsonData")
-
-                            // Parse JSON to extract icon information
-                            try {
-                                val gson = Gson()
-                                val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
-                                weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
-                                    currentWeatherIcon = weather.icon
-                                    currentWeatherDescription = weather.description
-                                }
-                            } catch (e: Exception) {
-                                Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
-                            }
-                        }
-
-                        override fun onError(error: String) {
-                            errorMessage = error
-                            isLoading = false
-                        }
-                    })
-                }
-            },
-            enabled = !isLoading,
-            modifier = Modifier.padding(bottom = 16.dp)
+                .padding(bottom = 8.dp)
         ) {
-            Text("Fetch Weather Data")
+            OutlinedTextField(
+                value = zipCodeInput,
+                onValueChange = {
+                    zipCodeInput = it
+                    onZipCodeInputChange(it) // Update shared state
+                    isUserTyping = true
+
+                    // Show dropdown when user types and there are saved locations
+                    if (it.isNotEmpty() && savedLocations.isNotEmpty()) {
+                        isDropdownExpanded = true
+                    } else if (it.isEmpty() && savedLocations.isNotEmpty()) {
+                        // If user clears the field, show all locations
+                        isDropdownExpanded = true
+                    } else {
+                        isDropdownExpanded = false
+                    }
+                },
+                label = { Text("Enter Zip Code") },
+                placeholder = { Text("e.g., 90210") },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (savedLocations.isNotEmpty()) {
+                            isUserTyping = false // User clicked, not typing
+                            isDropdownExpanded = !isDropdownExpanded
+                        }
+                    },
+                enabled = !isLoading,
+                trailingIcon = {
+                    if (savedLocations.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                isUserTyping = false // User clicked icon, not typing
+                                isDropdownExpanded = !isDropdownExpanded
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isDropdownExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = if (isDropdownExpanded) "Collapse dropdown" else "Expand dropdown",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            )
+
+            // Dropdown Menu using stable Material3 API
+            DropdownMenu(
+                expanded = isDropdownExpanded,
+                onDismissRequest = { isDropdownExpanded = false },
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .heightIn(max = 200.dp) // Limit height and allow scrolling
+            ) {
+                // Filter saved locations based on user interaction
+                val filteredLocations = if (!isUserTyping || zipCodeInput.isEmpty()) {
+                    // Show all locations when user clicked to open dropdown or field is empty
+                    savedLocations.take(8) // Show first 8 when no filter
+                } else {
+                    // Filter only when user is actively typing
+                    savedLocations.filter { location ->
+                        location.zip.contains(zipCodeInput, ignoreCase = true) ||
+                        location.name.contains(zipCodeInput, ignoreCase = true)
+                    }.take(5) // Limit to 5 most recent matches
+                }
+
+                if (filteredLocations.isEmpty()) {
+                    // Show "No results" item
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = if (zipCodeInput.isEmpty()) "No saved locations" else "No matching saved locations",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        },
+                        onClick = { },
+                        enabled = false
+                    )
+                } else {
+                    // Show filtered saved locations
+                    filteredLocations.forEach { location ->
+                        DropdownMenuItem(
+                            text = {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = location.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Zip: ${location.zip}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        maxLines = 1
+                                    )
+                                }
+                            },
+                            onClick = {
+                                // Set the zip code and fetch weather data
+                                zipCodeInput = location.zip
+                                onZipCodeInputChange(location.zip) // Update shared state
+                                currentLocation = location.name
+                                onCurrentLocationChange(location.name) // Update shared state
+                                isDropdownExpanded = false
+
+                                // Fetch weather data for selected location using stored coordinates
+                                coroutineScope.launch {
+                                    fetchWeatherData(location.lat, location.lon, location.name)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    // Show divider and "View all" option if there are many saved locations
+                    if (savedLocations.size > 8) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = "View all saved locations...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            },
+                            onClick = {
+                                isDropdownExpanded = false
+                                val intent = Intent(context, SavedLocationsActivity::class.java)
+                                savedLocationsLauncher.launch(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
+        // Button Row - Fetch Weather Data and View Saved Locations
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = {
+                    isLoading = true
+                    errorMessage = null
+                    weatherJson = null
+                    currentWeatherIcon = null
+                    currentWeatherDescription = null
+
+                    if (zipCodeInput.isNotBlank()) {
+                        // Use zip code search
+                        currentLocation = "Zip Code: ${zipCodeInput.trim()}"
+                        repository.getWeatherDataByZip(zipCodeInput.trim(), object : JavaWeatherRepository.JsonDataCallback {
+                            override fun onSuccess(jsonData: String) {
+                                weatherJson = jsonData
+                                isLoading = false
+                                Log.d("JavaWeather", "Weather JSON (from zip): $jsonData")
+
+                                // Parse JSON to extract icon information
+                                try {
+                                    val gson = Gson()
+                                    val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                                    weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                        currentWeatherIcon = weather.icon
+                                        currentWeatherDescription = weather.description
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
+                                }
+                            }
+
+                            override fun onError(error: String) {
+                                errorMessage = error
+                                isLoading = false
+                            }
+                        })
+                    } else {
+                        // Use default coordinates
+                        currentLocation = "Duluth, MN (46.8384°N, 92.1800°W)"
+                        repository.getWeatherDataAsJson(currentLatitude, currentLongitude, object : JavaWeatherRepository.JsonDataCallback {
+                            override fun onSuccess(jsonData: String) {
+                                weatherJson = jsonData
+                                isLoading = false
+                                Log.d("JavaWeather", "Weather JSON: $jsonData")
+
+                                // Parse JSON to extract icon information
+                                try {
+                                    val gson = Gson()
+                                    val weatherResponse = gson.fromJson(jsonData, WeatherResponse::class.java)
+                                    weatherResponse.current?.weather?.firstOrNull()?.let { weather ->
+                                        currentWeatherIcon = weather.icon
+                                        currentWeatherDescription = weather.description
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("JavaWeather", "Error parsing weather data: ${e.message}")
+                                }
+                            }
+
+                            override fun onError(error: String) {
+                                errorMessage = error
+                                isLoading = false
+                            }
+                        })
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("Fetch Weather Data")
+            }
+
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(context, SavedLocationsActivity::class.java)
+                    savedLocationsLauncher.launch(intent)
+                },
+                enabled = !isLoading,
+                modifier = Modifier.weight(1f)
+            ) {
+                Text("View Saved")
+            }
         }
 
         // Weather Icon Display
@@ -1041,6 +1749,103 @@ fun JavaWeatherContent() {
                                         rotationZ = current.windDeg.toFloat()
                                     }
                                 )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Hourly Weather Forecast Row
+        weatherJson?.let { json ->
+            val gson = Gson()
+            val weatherResponse = try {
+                gson.fromJson(json, WeatherResponse::class.java)
+            } catch (e: Exception) {
+                Log.e("JavaWeather", "Error parsing hourly weather data: ${e.message}")
+                null
+            }
+
+            weatherResponse?.hourly?.take(24)?.let { hourlyWeather ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        text = "24-Hour Forecast",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp)
+                    ) {
+                        items(hourlyWeather) { hour ->
+                            Card(
+                                modifier = Modifier
+                                    .width(100.dp)
+                                    .clip(RoundedCornerShape(16.dp)),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                )
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .padding(8.dp)
+                                        .fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    // Time
+                                    val timeFormatter = java.text.SimpleDateFormat("h a", java.util.Locale.getDefault())
+                                    val date = java.util.Date(hour.dt * 1000)
+
+                                    Text(
+                                        text = timeFormatter.format(date),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+
+                                    // Weather icon
+                                    hour.weather.firstOrNull()?.let { weather ->
+                                        AsyncImage(
+                                            model = "https://openweathermap.org/img/wn/${weather.icon}@2x.png",
+                                            contentDescription = weather.description,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .padding(bottom = 4.dp)
+                                        )
+                                    }
+
+                                    // Temperature
+                                    Text(
+                                        text = "${hour.temp.toInt()}°",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+
+                                    // Wind speed with direction
+                                    Row(
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "${hour.windSpeed.toInt()}",
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                        Text(
+                                            text = "↑",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            modifier = Modifier.graphicsLayer {
+                                                rotationZ = hour.windDeg.toFloat()
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -1249,7 +2054,7 @@ fun JavaWeatherContent() {
 @Preview(showBackground = true)
 @Composable
 fun WeatherAppPreview() {
-    WhetherOrNotTheme {
+    UmbrellaTheme {
         WeatherApp()
     }
 }

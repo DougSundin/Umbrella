@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    id("kotlin-kapt")
 }
 
 android {
@@ -50,6 +51,9 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
+    // Material Icons Extended - needed for ExpandLess, ExpandMore, etc.
+    implementation("androidx.compose.material:material-icons-extended:1.5.4")
+
     // Fragment support
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     implementation("androidx.fragment:fragment:1.6.2")
@@ -57,6 +61,7 @@ dependencies {
     // Room database
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
 
     // Networking
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
