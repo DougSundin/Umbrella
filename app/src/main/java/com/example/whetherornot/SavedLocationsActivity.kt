@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.example.whetherornot.data.model.ZipCodeResponse
 import com.example.whetherornot.data.repository.LocationRepository
-import com.example.whetherornot.ui.theme.WhetherOrNotTheme
+import com.example.whetherornot.ui.theme.UmbrellaTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -44,7 +44,7 @@ class SavedLocationsActivity : ComponentActivity() {
         locationRepository = LocationRepository(this)
 
         setContent {
-            WhetherOrNotTheme {
+            UmbrellaTheme {
                 SavedLocationsScreen(
                     locationRepository = locationRepository,
                     onBackClick = { finish() },

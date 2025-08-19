@@ -30,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.example.whetherornot.ui.theme.WhetherOrNotTheme
+import com.example.whetherornot.ui.theme.UmbrellaTheme
 import androidx.compose.ui.Alignment
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,7 +47,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            WhetherOrNotTheme {
+            UmbrellaTheme {
                 WeatherApp()
             }
         }
@@ -2054,7 +2054,7 @@ fun JavaWeatherContent(
 @Preview(showBackground = true)
 @Composable
 fun WeatherAppPreview() {
-    WhetherOrNotTheme {
+    UmbrellaTheme {
         WeatherApp()
     }
 }
